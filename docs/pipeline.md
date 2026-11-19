@@ -82,7 +82,8 @@ Paths in the YAML are resolved consistently:
 | `export_yolo.path` | the YAML file's directory |
 | `write_image_list.path` | the YAML file's directory |
 | `make_batches.path` | the YAML file's directory |
-| `train.data`, `train.project`, `train.export_dir` | the YAML file's directory |
+| `train.data`, `train.project`, `train.export_dir`, `train.extra.cfg` | the pipeline YAML's directory |
+| Local `model` and `data` references inside `train.extra.cfg` | the training cfg's directory |
 | `source.root` | the YAML file's directory |
 | `source.annotations`, `source.images`, `source.labels`, `source.data_yaml` | `source.root` |
 
@@ -184,8 +185,10 @@ pipeline:
     path: build/coco-yolo
     overwrite: true
   - block: train
-    model: yolov8n.pt
-    epochs: 100
+    backend: ultralytics
+    extra:
+      cfg: configs/yolo-training.yaml
+      data: build/coco-yolo/data.yaml
 ```
 
 ### Quality pass only

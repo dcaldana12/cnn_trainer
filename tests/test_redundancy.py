@@ -304,3 +304,68 @@ def test_find_rejects_invalid_threshold(tmp_path, ctx):
         find_redundant_images(dataset, ctx, similarity_threshold=9)
     with pytest.raises(BlockError, match="hash_size"):
         find_redundant_images(dataset, ctx, hash_size=4)
+
+
+def test_review_paginates_duplicate_pairs_and_lists_unreadable(tmp_path, ctx):
+    flags = [{"name": f"candidate-{index:02}.png", "seed": 1} for index in range(11)]
+    dataset = _dataset(tmp_path, [*flags, {"name": "keeper.png", "seed": 1, "boxes": 1}])
+    blank = tmp_path / "blank.png"
+    write_png(blank, 64, 64, (20, 20, 20))
+    broken = tmp_path / "broken.png"
+    broken.write_bytes(b"corrupt image")
+    for path in (blank, broken):
+        dataset.images.append(
+            ImageRecord(path=path, relative_path=Path(path.name), width=64, height=64)
+        )
+
+    find_redundant_images(dataset, ctx, similarity_threshold=0, review=True)
+
+    report = json.loads((ctx.workdir / "redundancy.json").read_text(encoding="utf-8"))
+    directory = ctx.workdir / report["review_directory"]
+    assert sorted(path.name for path in directory.iterdir()) == [
+        "blanks-001.png",
+        "duplicates-001.png",
+        "duplicates-002.png",
+    ]
+    with Image.open(directory / "duplicates-001.png") as sheet:
+        assert sheet.size == (960, 4200)
+    with Image.open(directory / "duplicates-002.png") as sheet:
+        assert sheet.size == (960, 420)
+        with Image.open(tmp_path / "keeper.png") as keeper:
+            assert sheet.getpixel((688, 128)) == keeper.convert("RGB").getpixel((0, 0))
+    with Image.open(directory / "blanks-001.png") as sheet:
+        assert sheet.size == (960, 420)
+    assert report["unreadable"][0]["relative_path"] == "broken.png"
+
+
+def test_parallel_fingerprints_match_serial_results(tmp_path, ctx):
+    dataset = _dataset(
+        tmp_path,
+        [
+            {"name": "a.png", "seed": 1},
+            {"name": "b.png", "seed": 1, "boxes": 1},
+            {"name": "c.png", "seed": 2},
+        ],
+    )
+    blank = tmp_path / "blank.png"
+    write_png(blank, 64, 64, (20, 20, 20))
+    broken = tmp_path / "broken.png"
+    broken.write_bytes(b"corrupt image")
+    for path in (blank, broken):
+        dataset.images.append(
+            ImageRecord(path=path, relative_path=Path(path.name), width=64, height=64)
+        )
+
+    find_redundant_images(dataset, ctx, workers=1)
+    serial = dataset.metadata["redundancy"]
+    find_redundant_images(dataset, ctx, workers=3)
+    parallel = dataset.metadata["redundancy"]
+
+    assert parallel["parameters"].pop("workers") == 3
+    assert serial["parameters"].pop("workers") == 1
+    assert parallel == serial
+    assert parallel["counts"] == {"duplicate": 1, "blank": 1}
+    assert parallel["unreadable"][0]["relative_path"] == "broken.png"
+
+    with pytest.raises(BlockError, match="workers must be a positive integer"):
+        find_redundant_images(dataset, ctx, workers=0)

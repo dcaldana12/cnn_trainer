@@ -3,7 +3,7 @@
 Importing this package registers every built-in block.
 """
 
-from . import audit, export, labels, output, redundancy, split, stats, train, validate
+from . import audit, export, labels, output, redundancy, split, stats, train, validate, visual_split
 
 __all__ = [
     "audit",
@@ -15,4 +15,5 @@ __all__ = [
     "stats",
     "train",
     "validate",
+    "visual_split",
 ]

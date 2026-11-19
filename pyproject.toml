@@ -26,6 +26,8 @@ dependencies = ["PyYAML>=6.0"]
 [project.optional-dependencies]
 images = ["Pillow>=10"]
 train = ["ultralytics>=8.2", "Pillow>=10"]
+visual = ["torch>=2.2", "torchvision>=0.17", "scikit-learn>=1.4", "Pillow>=10", "matplotlib>=3.8"]
+umap = ["umap-learn>=0.5"]
 dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.4", "Pillow>=10"]
 
 [project.urls]

@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import statistics
 from collections import Counter, defaultdict
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -13,6 +15,7 @@ from ..dataset import KNOWN_SPLITS, Dataset, ImageRecord
 from ..errors import BlockError
 from ..registry import block
 from ..utils import strip_split_prefix
+from .redundancy_review import write_review
 
 _KNOWN_SPLIT_SET = frozenset(KNOWN_SPLITS)
 _SPLIT_RANK = {"train": 0, "val": 1, "test": 2}
@@ -46,7 +49,9 @@ def find_redundant_images(
     respect_splits: bool = False,
     write_report: bool = True,
     write_list: bool = True,
+    review: bool = False,
     max_logged: int = 10,
+    workers: int = 1,
 ) -> Dataset:
     """Compare perceptual hashes and image contrast to find candidates.
 
@@ -56,6 +61,8 @@ def find_redundant_images(
     """
     Image = _import_pillow()
     _validate_hash_options(hash_size, similarity_threshold, min_contrast, max_logged)
+    if type(workers) is not int or workers < 1:
+        raise BlockError("find_redundant_images.workers must be a positive integer")
     protected = _normalize_splits(protect_splits, "protect_splits")
     if not isinstance(flag, str) or not flag.strip():
         raise BlockError("flag must be a non-empty string")
@@ -66,23 +73,34 @@ def find_redundant_images(
     entries: list[_Entry] = []
     unreadable: list[dict[str, str]] = []
     records = sorted(dataset.images, key=lambda record: record.relative_path.as_posix())
-    for record in records:
+
+    def scan(record: ImageRecord) -> tuple[int, float] | str:
         try:
-            fingerprint, contrast = _fingerprint(Image, record.path, hash_size=hash_size)
-        except OSError as error:
-            unreadable.append(
-                {"relative_path": record.relative_path.as_posix(), "error": str(error)}
+            return _fingerprint(Image, record.path, hash_size=hash_size)
+        except (OSError, Image.DecompressionBombError) as error:
+            return str(error)
+
+    worker_count = min(workers, len(records))
+    pool = ThreadPoolExecutor(max_workers=worker_count) if worker_count > 1 else nullcontext()
+    with pool as executor:
+        results = executor.map(scan, records) if executor else map(scan, records)
+        # Consume in the same path order regardless of thread completion order.
+        for record, result in zip(records, results, strict=True):
+            if isinstance(result, str):
+                unreadable.append(
+                    {"relative_path": record.relative_path.as_posix(), "error": result}
+                )
+                continue
+            fingerprint, contrast = result
+            entries.append(
+                _Entry(
+                    index=len(entries),
+                    record=record,
+                    fingerprint=fingerprint,
+                    contrast=contrast,
+                    scope=(record.split or "unassigned") if respect_splits else "",
+                )
             )
-            continue
-        entries.append(
-            _Entry(
-                index=len(entries),
-                record=record,
-                fingerprint=fingerprint,
-                contrast=contrast,
-                scope=(record.split or "unassigned") if respect_splits else "",
-            )
-        )
 
     instance_counts = Counter(
         annotation.class_id for record in dataset.images for annotation in record.annotations
@@ -153,6 +171,7 @@ def find_redundant_images(
         },
         "parameters": {
             "hash_size": hash_size,
+            "workers": workers,
             "similarity_threshold": similarity_threshold,
             "min_contrast": min_contrast,
             "respect_splits": respect_splits,
@@ -166,6 +185,11 @@ def find_redundant_images(
         dataset.metadata["image_flags"] = flags
     flags[flag] = [candidate["relative_path"] for candidate in candidate_list]
     dataset.metadata["redundancy"] = report
+
+    if review:
+        directory = write_review(ctx, records, report)
+        report["review_directory"] = directory.relative_to(ctx.workdir).as_posix()
+        ctx.logger.info("PNG contact sheets: %s", directory)
 
     if write_report:
         destination = ctx.ensure_workdir() / "redundancy.json"

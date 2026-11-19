@@ -163,12 +163,14 @@ is the slowest preprocessing block on large datasets.
 | --- | --- | --- |
 | `flag` | `redundant` | Metadata key for a following `remove_flagged_images` |
 | `hash_size` | `8` | dHash size; 8 is 64 bits and works well for photos |
+| `workers` | `1` | CPU threads for image decoding and fingerprinting |
 | `similarity_threshold` | `6` | Maximum Hamming distance (0–7) for duplicates |
 | `min_contrast` | `5.0` | Grayscale std-dev below which an unlabeled image is blank |
 | `protect_splits` | `null` | Splits whose images must never be flagged |
 | `respect_splits` | `false` | Only compare images inside the same split |
 | `write_report` | `true` | Write `redundancy.json` |
 | `write_list` | `true` | Write `candidates.txt` with one path per line |
+| `review` | `false` | Write PNG contact sheets for duplicate and low-contrast candidates |
 | `max_logged` | `10` | Candidates printed to the console |
 
 When a group has several images, the keeper is chosen by: protected split first,
@@ -183,6 +185,13 @@ validation. If you run it after `split`, consider `protect_splits: [test]` and
 - `candidates`: path, split, reason, and similarity or contrast;
 - `counts`: number of duplicate and blank candidates;
 - `unreadable`: images Pillow could not decode.
+
+With `review: true`, open the `review_directory` path from `redundancy.json`
+relative to the run workdir. Each `duplicates-*.png` sheet shows up to ten
+candidate–keeper pairs, with candidates on the left. Low-contrast images appear
+in separate `blanks-*.png` sheets with two images per row. Unreadable images are
+listed with their decode errors in `redundancy.json`. Each scan writes sheets
+under a fresh folder in `redundancy-review/`.
 
 See [Dataset quality](quality.md) for tuning advice.
 
@@ -218,6 +227,28 @@ classify most of a dataset as duplicates. Start with `dry_run: true`, inspect
 `candidates.txt` holds one relative path per line. After reviewing it, pass the
 edited list back with `paths:` to remove exactly those images without rerunning
 the detector.
+
+## `visual_split`
+
+Assign whole capture groups while balancing visual clusters, classes,
+and background images. See [visual dataset splitting](quality.md#heavier-visual-analysis).
+
+| Parameter | Default | Meaning |
+| --- | --- | --- |
+| `ratios` | train 0.7, val 0.2, test 0.1 | Target image fractions |
+| `clusters` | `null` | Fixed K or automatic selection |
+| `backbone` | `resnet50` | Also accepts `resnet18`, `efficientnet_b0`, `mobilenet_v3_small`, and `vit_b_16` |
+| `review_only` | `false` | Compare candidate K values and leave split assignments untouched |
+| `samples_per_cluster` | `4` | Representative images per cluster in review mode |
+| `max_clusters` | `20` | Largest K considered in automatic selection |
+| `min_cluster_size` | `10` | Preferred minimum size when selecting K |
+| `group_regex` | `null` | One capture group matched against each relative image path |
+| `group_manifest` | `null` | Config-relative JSON path mapping image paths to group IDs |
+| `use_duplicate_groups` | `true` | Merge perceptual groups from the current pipeline |
+| `batch_size` | `32` | Images per inference batch |
+| `device` | `auto` | Use CUDA when available or fall back to CPU |
+| `umap` | `false` | Include UMAP in the review plots or split CSV |
+| `overwrite` | `false` | Replace existing split assignments |
 
 ## `split`
 
@@ -319,47 +350,31 @@ uploading one batch at a time to a training machine.
 
 ## `train`
 
-Train with Ultralytics YOLO. If `data` is omitted, the current dataset is exported
-to `workdir/training_dataset` first, so a separate `export_yolo` block is not
-required. Ultralytics requires both a `train` and a `val` split; add a `split`
-block before `train` (or pass an existing `data.yaml` with `data`).
+Train with Ultralytics YOLO. Pass backend training arguments through `extra`.
+Use `extra.cfg` to load an Ultralytics training YAML with settings such as
+`model`, `epochs`, `imgsz`, and `batch`.
 
 ```yaml
 - block: train
   backend: ultralytics
-  model: yolov8n.pt
-  epochs: 100
-  imgsz: 640
-  batch: 16
-  device: 0
+  extra:
+    cfg: configs/yolo-training.yaml
 ```
+
+Explicit top-level values take precedence over `extra`, and explicit values in
+`extra` take precedence over the cfg. Omitted or `null` overrides use backend
+settings. If no model is configured, the block initializes `yolov8n.pt`.
+If no setting supplies `data`, the block exports the current dataset to
+`workdir/training_dataset` and requires train and validation splits.
 
 | Parameter | Default | Meaning |
 | --- | --- | --- |
 | `backend` | `ultralytics` | Training backend |
-| `model` | `yolov8n.pt` | Ultralytics model name or checkpoint path |
-| `epochs` | `100` | Training epochs |
-| `imgsz` | `640` | Input image size |
-| `batch` | `16` | Batch size |
-| `device` | `null` | Device id, list, `cpu`, or `mps` |
-| `workers` | `8` | Dataloader workers |
-| `project` | `workdir/training` | Ultralytics project directory |
-| `name` | `train` | Run name inside the project |
-| `exist_ok` | `true` | Allow an existing run directory |
-| `seed` | run seed | Training seed |
+| `extra` | `null` | Ultralytics arguments, e.g. `cfg` |
+| `model`, `epochs`, `imgsz`, `batch`, `device`, `workers` | `null` | Optional explicit overrides |
+| `project`, `name`, `exist_ok`, `seed` | `null` | Optional backend run settings |
 | `data` | `null` | Use an existing `data.yaml` instead of exporting |
-| `export_dir` | `workdir/training_dataset` | Internal export directory |
-| `extra` | `{}` | Additional Ultralytics `train()` arguments |
-
-Any Ultralytics argument not listed above can be passed through `extra`:
-
-```yaml
-- block: train
-  extra:
-    patience: 20
-    plots: true
-    resume: false
-```
+| `export_dir` | `null` | Override the generated training dataset directory |
 
 Training requires the `train` extra:
 

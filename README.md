@@ -48,8 +48,7 @@ uv sync --extra train
 uv sync --all-extras
 ```
 
-`uv venv` keeps every dependency inside `./.venv`; nothing is installed into the
-system Python. `uv run` automatically uses that environment, so activation is
+`uv venv` keeps every dependency inside `./.venv`. `uv run` automatically uses that environment, so activation is
 optional:
 
 ```bash
@@ -58,7 +57,7 @@ uv run cnn-trainer blocks -v
 ```
 
 To use the CLI outside the repository, install it into uv's isolated tool
-environment (again, not the system Python):
+environment:
 
 ```bash
 uv tool install "cnn-trainer[images] @ git+https://github.com/dcaldana12/cnn_trainer.git"

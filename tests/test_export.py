@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -167,3 +168,46 @@ def test_train_reports_missing_ultralytics(coco_root, ctx, monkeypatch):
 
     with pytest.raises(BlockError, match="Ultralytics is not installed"):
         train(dataset, ctx, epochs=1)
+
+
+def test_train_cfg_preserves_backend_settings_and_allows_explicit_overrides(
+    coco_root, ctx, monkeypatch
+):
+    dataset = _coco_dataset(coco_root)
+    config = ctx.config_dir / "configs"
+    config.mkdir()
+    cfg_path = config / "training.yaml"
+    cfg_path.write_text(
+        "model: weights.pt\ndata: data.yaml\nepochs: 30\nimgsz: 320\nname: custom\n"
+    )
+    (config / "data.yaml").write_text("train: images/train\nval: images/val\n")
+    (config / "weights.pt").touch()
+    captured = {}
+    output = ctx.workdir / "backend-assigned-run"
+
+    class FakeYOLO:
+        def __init__(self, model):
+            captured["model"] = model
+            self.trainer = SimpleNamespace(save_dir=output)
+
+        def train(self, **kwargs):
+            captured["kwargs"] = kwargs
+
+    monkeypatch.setitem(sys.modules, "ultralytics", SimpleNamespace(YOLO=FakeYOLO))
+    train(dataset, ctx, extra={"cfg": "configs/training.yaml", "batch": 4, "device": 0})
+
+    assert captured == {
+        "model": str(config / "weights.pt"),
+        "kwargs": {
+            "cfg": str(cfg_path),
+            "data": str(config / "data.yaml"),
+            "batch": 4,
+            "device": 0,
+        },
+    }
+    assert dataset.metadata["training_results"] == str(output)
+    assert not (ctx.workdir / "training_dataset").exists()
+
+    train(dataset, ctx, epochs=2, extra={"cfg": str(cfg_path), "epochs": 6, "model": "other.pt"})
+    assert captured["model"] == "other.pt"
+    assert captured["kwargs"]["epochs"] == 2

@@ -157,17 +157,53 @@ dataset. Raise it deliberately with `force: true` only after reviewing the repor
 
 ## Heavier visual analysis
 
-The built-in detector compares perceptual hashes. When you need semantic
-clustering instead, pair the pipeline with your own embedding workflow:
+The optional `visual_split` block extracts pretrained image embeddings,
+normalizes them, projects them with PCA, and fits K-Means. Set `backbone`
+to `resnet50` (the default), `resnet18`, `efficientnet_b0`,
+`mobilenet_v3_small`, or `vit_b_16`. Automatic cluster
+selection prefers candidates that meet the minimum cluster size, using
+silhouette and Davies–Bouldin scores to rank them. Optional UMAP coordinates
+help inspect the assignments. Clustering uses the PCA features.
 
-- ResNet50 (or another backbone) feature extraction;
-- PCA and UMAP projections;
-- K-Means cluster selection with silhouette and Davies–Bouldin scores;
-- cluster-aware and group-aware splitting for video frames or sessions.
+Add `visual_split` to your pipeline YAML and run
+`uv run --extra visual cnn-trainer run path/to/pipeline.yaml` from the repository
+root. The first run needs pretrained weights from torchvision
+or an existing weights cache. Use `--extra umap` alongside `--extra visual`
+and set `umap: true` to include UMAP coordinates.
 
-These steps require PyTorch and scikit-learn and are intentionally outside the
-core pipeline. Use them to inspect visual clusters, then encode the resulting
-decisions as split assignments or a custom block.
+To compare K values before splitting, use this as the final block of a review pipeline:
+
+```yaml
+  - block: visual_split
+    backbone: efficientnet_b0
+    review_only: true
+    max_clusters: 12
+    samples_per_cluster: 4
+```
+
+The run logs a `visual-review-*/` folder containing `k-scores.png`, a
+`review.json` with the candidate scores and preview split coverage when groups
+permit it, and one folder per K with projections, cluster sizes, sample sheets,
+and individual sample thumbnails. Include the same grouping options in both
+runs to make the preview comparable. To apply your choice, remove
+`review_only: true`, set `clusters` to the selected K, and run the split
+pipeline with the same backbone.
+
+The splitter balances image counts, cluster coverage, class presence, and
+background across the requested splits. It assigns whole groups, which can
+make the achieved ratios differ from the targets. Supply a JSON group manifest
+mapping dataset-relative image paths to verified capture or session IDs, or a
+`group_regex` with one capture group matched against those paths. The block
+also groups perceptual matches from a preceding `find_redundant_images` block
+by default. Overlapping groups are merged, and unmatched images are treated
+individually.
+
+Review `visual-split.csv` for per-image assignments and projection coordinates
+and `visual-split.json` for cluster scores, realized counts, and coverage.
+When K is chosen automatically, `visual-split-k-scores.png` compares candidate
+scores and marks the selected K and minimum cluster size. Add
+`audit_dataset` and `export_yolo` after the visual split to audit and export
+the assignments.
 
 ## A practical checklist
 

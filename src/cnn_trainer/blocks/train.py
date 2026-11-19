@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import yaml
+
 from ..context import Context
 from ..dataset import Dataset
 from ..errors import BlockError
 from ..registry import block
+from ..utils import resolve_path
 from .export import write_yolo_dataset
 
 
@@ -15,15 +18,15 @@ def train(
     ctx: Context,
     *,
     backend: str = "ultralytics",
-    model: str = "yolov8n.pt",
-    epochs: int = 100,
-    imgsz: int | list[int] = 640,
-    batch: int | float = 16,
+    model: str | None = None,
+    epochs: int | None = None,
+    imgsz: int | list[int] | None = None,
+    batch: int | float | None = None,
     device: str | int | list | None = None,
-    workers: int = 8,
+    workers: int | None = None,
     project: str | None = None,
-    name: str = "train",
-    exist_ok: bool = True,
+    name: str | None = None,
+    exist_ok: bool | None = None,
     seed: int | None = None,
     data: str | None = None,
     export_dir: str | None = None,
@@ -35,10 +38,57 @@ def train(
             f"Unsupported training backend: {backend!r}. Only 'ultralytics' is available."
         )
 
-    if data:
-        data_path = ctx.resolve(data)
-        if data_path is None or not data_path.is_file():
-            raise BlockError(f"Training data YAML not found: {data_path}")
+    if extra is not None and not isinstance(extra, dict):
+        raise BlockError("train.extra must be a mapping")
+
+    train_args = {key: value for key, value in (extra or {}).items() if value is not None}
+    train_args.update(
+        (key, value)
+        for key, value in {
+            "epochs": epochs,
+            "imgsz": imgsz,
+            "batch": batch,
+            "device": device,
+            "workers": workers,
+            "project": project,
+            "name": name,
+            "exist_ok": exist_ok,
+            "seed": seed,
+        }.items()
+        if value is not None
+    )
+    if "project" in train_args:
+        train_args["project"] = str(ctx.resolve(train_args["project"]))
+
+    config = {}
+    config_dir = ctx.config_dir
+    if "cfg" in train_args:
+        cfg_path = ctx.resolve(train_args["cfg"])
+        try:
+            config = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError) as error:
+            raise BlockError(f"Cannot read Ultralytics training cfg {cfg_path}: {error}") from error
+        if not isinstance(config, dict):
+            raise BlockError(f"Ultralytics training cfg must contain a mapping: {cfg_path}")
+        train_args["cfg"] = str(cfg_path)
+        config_dir = cfg_path.parent
+
+    extra_model = train_args.pop("model", None)
+    model_dir = ctx.config_dir if model is not None or extra_model is not None else config_dir
+    model = model or extra_model or config.get("model") or "yolov8n.pt"
+    model = _local_path_or_backend_name(model, model_dir)
+
+    configured_data = data if data is not None else train_args.get("data")
+    if configured_data is not None:
+        if data is not None:
+            data_path = ctx.resolve(data)
+            if not data_path.is_file():
+                raise BlockError(f"Training data YAML not found: {data_path}")
+            train_args["data"] = str(data_path)
+        else:
+            train_args["data"] = _resolve_backend_data(configured_data, ctx.config_dir)
+    elif config.get("data"):
+        train_args["data"] = _resolve_backend_data(config["data"], config_dir)
     else:
         splits = {record.split or "train" for record in dataset.images}
         if "train" not in splits:
@@ -65,10 +115,7 @@ def train(
         )
         ctx.logger.info("Prepared YOLO training dataset at %s", destination)
 
-    project_path = ctx.resolve(project) if project else ctx.ensure_workdir() / "training"
-    if project_path is None:
-        raise BlockError("Invalid training project directory")
-    project_path.mkdir(parents=True, exist_ok=True)
+        train_args["data"] = str(data_path)
 
     try:
         from ultralytics import YOLO
@@ -78,43 +125,28 @@ def train(
             "pip install 'cnn-trainer[train]'"
         ) from error
 
-    if extra is not None and not isinstance(extra, dict):
-        raise BlockError("train.extra must be a mapping")
-
-    train_args = dict(extra or {})
-    train_args.update(
-        {
-            "data": str(data_path),
-            "epochs": int(epochs),
-            "imgsz": imgsz,
-            "batch": batch,
-            "workers": int(workers),
-            "project": str(project_path),
-            "name": name,
-            "exist_ok": bool(exist_ok),
-            "seed": int(ctx.seed if seed is None else seed),
-        }
-    )
-    if device is not None:
-        train_args["device"] = device
-
-    ctx.logger.info(
-        "Starting Ultralytics training: model=%s, epochs=%s, imgsz=%s, data=%s",
-        model,
-        epochs,
-        imgsz,
-        data_path,
-    )
-
+    ctx.logger.info("Starting Ultralytics training: model=%s, data=%s", model, train_args["data"])
     try:
-        YOLO(model).train(**train_args)
+        trainer_model = YOLO(model)
+        trainer_model.train(**train_args)
+        results_dir = trainer_model.trainer.save_dir
     except Exception as error:  # Ultralytics raises a wide variety of exceptions.
         raise BlockError(f"Ultralytics training failed: {error}") from error
 
-    results_dir = project_path / name
     ctx.logger.info("Training finished; results: %s", results_dir)
     dataset.metadata["training_results"] = str(results_dir)
     return dataset
+
+
+def _local_path_or_backend_name(value, directory):
+    path = resolve_path(value, directory)
+    return str(path) if path.is_file() else value
+
+
+def _resolve_backend_data(value, directory):
+    if isinstance(value, list):
+        return [_local_path_or_backend_name(item, directory) for item in value]
+    return _local_path_or_backend_name(value, directory)
 
 
 __all__ = ["train"]

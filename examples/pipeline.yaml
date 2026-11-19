@@ -66,8 +66,5 @@ pipeline:
   # the training block to create its own temporary YOLO dataset.
   # - block: train
   #   backend: ultralytics
-  #   model: yolov8n.pt
-  #   epochs: 100
-  #   imgsz: 640
-  #   batch: 16
-  #   device: 0
+  #   extra:
+  #     cfg: configs/yolo-training.yaml
