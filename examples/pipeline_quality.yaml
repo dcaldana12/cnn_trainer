@@ -1,0 +1,38 @@
+run:
+  name: quality-pass
+  seed: 42
+  workdir: ../runs/quality-pass
+
+source:
+  # Works with cvat_xml, coco, or yolo sources.
+  format: yolo
+  root: /data/hdd-dataset
+
+pipeline:
+  # 1. Understand the dataset before touching it.
+  - block: audit_dataset
+    min_instances_per_class: 50
+    min_images_per_class: 25
+
+  # 2. Find repeated frames and blank images.
+  #    Requires: uv sync --extra images
+  - block: find_redundant_images
+    similarity_threshold: 6
+    min_contrast: 5.0
+
+  # 3. Review runs/quality-pass/redundancy.json and candidates.txt, then set
+  #    dry_run: false. The max_fraction guard stops accidental mass deletion.
+  - block: remove_flagged_images
+    max_fraction: 0.25
+    dry_run: true
+
+  # 4. Re-audit the cleaned dataset and export the final YOLO dataset.
+  - block: audit_dataset
+  - block: split
+    ratios:
+      train: 0.7
+      val: 0.2
+      test: 0.1
+  - block: export_yolo
+    path: ../build/quality-yolo
+    overwrite: true

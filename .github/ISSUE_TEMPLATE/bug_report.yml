@@ -1,0 +1,73 @@
+name: Bug report
+description: Something failed or produced an unexpected dataset
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please remove private paths and dataset content
+        before posting. For security issues, follow SECURITY.md instead.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear description of the unexpected result.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: The command you ran and what you expected instead.
+      placeholder: |
+        1. Run `uv run cnn-trainer run pipeline.yaml`
+        2. The split block fails with ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: pipeline
+    attributes:
+      label: Pipeline YAML
+      description: The smallest configuration that shows the problem.
+      render: yaml
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output
+      description: Console output, traceback, or the failing entry in run.json.
+      render: shell
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: cnn-trainer version
+      description: Output of `uv run cnn-trainer --version`.
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: "Python version, OS, and installed extras (core, images, train)."
+      placeholder: "Python 3.12, Ubuntu 24.04, extras: images"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues.
+          required: true
+        - label: I removed private dataset paths and content.
+          required: true

@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cnn-trainer"
+version = "0.1.0"
+description = "YAML-driven pre-processing and training pipelines for object detectors"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "Daniele Caldana" }]
+keywords = ["yolo", "object-detection", "dataset", "pipeline", "training", "coco", "cvat"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = ["PyYAML>=6.0"]
+
+[project.optional-dependencies]
+images = ["Pillow>=10"]
+train = ["ultralytics>=8.2", "Pillow>=10"]
+dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.4", "Pillow>=10"]
+
+[project.urls]
+Homepage = "https://github.com/dcaldana12/cnn_trainer"
+Documentation = "https://github.com/dcaldana12/cnn_trainer/tree/main/docs"
+Issues = "https://github.com/dcaldana12/cnn_trainer/issues"
+Changelog = "https://github.com/dcaldana12/cnn_trainer/blob/main/CHANGELOG.md"
+
+[project.scripts]
+cnn-trainer = "cnn_trainer.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

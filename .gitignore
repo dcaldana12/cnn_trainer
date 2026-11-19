@@ -221,3 +221,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# cnn-trainer run outputs and exported datasets
+runs/
+

@@ -1,0 +1,73 @@
+run:
+  name: hdd-detector
+  seed: 42
+  workdir: ../runs/hdd-detector
+
+source:
+  # CVAT for images 1.1: annotations.xml plus the image folder.
+  format: cvat_xml
+  root: /data/cvat/detect
+  annotations: annotations.xml
+  images: images
+  # class_names: [person, car, truck]
+
+pipeline:
+  - block: stats
+
+  - block: validate
+    num_classes: 9
+
+  # Read-only quality report: class balance, split coverage, box sizes, tips.
+  - block: audit_dataset
+
+  # Create empty label files for images without annotations.
+  - block: create_missing_labels
+
+  # Merge class 4 into class 0 and drop class 7.
+  - block: remap_classes
+    mapping:
+      4: 0
+      7: null
+    prune_unused: true
+
+  # Optional quality pass (requires `uv sync --extra images`).
+  # Review runs/hdd-detector/redundancy.json first, then uncomment removal.
+  # - block: find_redundant_images
+  #   similarity_threshold: 6
+  # - block: remove_flagged_images
+  #   max_fraction: 0.3
+
+  - block: split
+    ratios:
+      train: 0.7
+      val: 0.2
+      test: 0.1
+    seed: 42
+    stratify: true
+
+  - block: export_yolo
+    path: ../build/hdd-yolo
+    overwrite: true
+
+  # Optional: write a plain image list, e.g. for a custom training script.
+  - block: write_image_list
+    path: ../build/train.txt
+    split: train
+    prefix: data/images/train
+
+  # Optional: package the training split into 100-image batches with ZIP files.
+  # - block: make_batches
+  #   path: ../build/batches
+  #   batch_size: 100
+  #   split: train
+  #   overwrite: true
+
+  # Optional: train after exporting. Remove the export block above if you want
+  # the training block to create its own temporary YOLO dataset.
+  # - block: train
+  #   backend: ultralytics
+  #   model: yolov8n.pt
+  #   epochs: 100
+  #   imgsz: 640
+  #   batch: 16
+  #   device: 0
