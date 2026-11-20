@@ -47,12 +47,19 @@ def test_export_layout_and_metadata(coco_root, ctx, tmp_path):
     data_path = write_yolo_dataset(dataset, destination)
 
     data = yaml.safe_load(data_path.read_text(encoding="utf-8"))
-    assert "path" not in data
-    assert data["nc"] == 2
-    assert data["names"] == {0: "cat", 1: "dog"}
-    assert data["train"] == "images/train"
-    assert data["val"] == "images/val"
-    assert data["test"] == "images/test"
+    assert data == {
+        "names": {0: "cat", 1: "dog"},
+        "path": ".",
+        "train": "train.txt",
+        "val": "val.txt",
+        "test": "test.txt",
+    }
+    for name in ("train", "val", "test"):
+        image_list = (destination / data[name]).read_text().splitlines()
+        assert set(image_list) == {
+            f"./{image.relative_to(destination).as_posix()}"
+            for image in (destination / "images" / name).rglob("*.png")
+        }
 
     assert len(list((destination / "images").rglob("*.png"))) == 4
     assert len(list((destination / "labels").rglob("*.txt"))) == 4
@@ -70,16 +77,6 @@ def test_export_layout_and_metadata(coco_root, ctx, tmp_path):
     assert len(c_images) == 1
     c_label = destination / "labels" / c_images[0].parent.name / "c.txt"
     assert c_label.read_text(encoding="utf-8") == ""
-
-
-def test_export_can_pin_absolute_path(coco_root, tmp_path):
-    dataset = _coco_dataset(coco_root)
-    destination = tmp_path / "export"
-
-    data_path = write_yolo_dataset(dataset, destination, absolute_path=True)
-
-    data = yaml.safe_load(data_path.read_text(encoding="utf-8"))
-    assert data["path"] == str(destination.resolve())
 
 
 def test_export_refuses_non_empty_directory(coco_root, ctx, tmp_path):
@@ -255,3 +252,35 @@ def test_batch_accepts_rounded_yolo_boxes_at_image_edges(yolo_root, ctx):
     assert y_center - height / 2 >= -1e-6
     assert x_center + width / 2 == pytest.approx(0.9991665, abs=1e-6)
     assert y_center + height / 2 == pytest.approx(0.9964415, abs=1e-6)
+
+
+def test_train_uses_portable_yolo_export(coco_root, ctx, monkeypatch):
+    dataset = _coco_dataset(coco_root)
+    _split(dataset, ctx)
+    original_dir = Path.cwd()
+    destination = ctx.workdir / "training_dataset"
+
+    class FakeYOLO:
+        def __init__(self, model):
+            self.trainer = SimpleNamespace(save_dir=destination / "training-results")
+
+        def train(self, **kwargs):
+            assert Path.cwd() == destination
+            data_path = Path(kwargs["data"])
+            assert data_path == destination / "data.yaml"
+            assert yaml.safe_load(data_path.read_text()) == {
+                "names": {0: "cat", 1: "dog"},
+                "path": ".",
+                "train": "train.txt",
+                "val": "val.txt",
+                "test": "test.txt",
+            }
+            assert (destination / "train.txt").is_file()
+            assert (destination / "val.txt").is_file()
+
+    monkeypatch.setitem(sys.modules, "ultralytics", SimpleNamespace(YOLO=FakeYOLO))
+    train(dataset, ctx)
+    assert Path.cwd() == original_dir
+    assert dataset.metadata["training_results"] == str(destination / "training-results")
+    train(dataset, ctx, data=str(destination / "data.yaml"))
+    assert Path.cwd() == original_dir

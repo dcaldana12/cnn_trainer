@@ -346,6 +346,9 @@ Write a complete YOLO/Ultralytics dataset:
 ```text
 build/yolo/
   data.yaml
+  train.txt
+  val.txt
+  test.txt
   images/train/...
   images/val/...
   images/test/...
@@ -361,12 +364,13 @@ build/yolo/
 | `mode` | `copy` | `copy`, `symlink`, or `hardlink` |
 | `overwrite` | `false` | Replace a non-empty output directory |
 | `clamp` | `false` | Clamp out-of-bounds boxes instead of failing |
-| `absolute_path` | `false` | Write an absolute `path` into `data.yaml` |
 
-`data.yaml` contains `nc`, `names`, and every split that has images. By default it
-does **not** contain `path`, so Ultralytics uses the YAML file's parent directory
-and the exported dataset (or a batch ZIP) can be moved safely. Set
-`absolute_path: true` if you need to pin the dataset root.
+`data.yaml` contains the class ID mapping under `names`, `path: .`, and one
+image-list entry per populated split, such as `train: train.txt`. Each list
+contains paths like `./images/train/frame.jpg` relative to the list file.
+Run Ultralytics from the dataset directory when invoking it directly. The
+`train` block handles this for pipeline exports. Batch ZIPs also include their
+split lists and use `path: .`.
 
 Exports refuse to write into a non-empty directory unless `overwrite: true` is
 set. Empty label files are written for background images.

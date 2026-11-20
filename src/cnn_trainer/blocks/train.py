@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 import yaml
 
 from ..context import Context
@@ -128,14 +131,39 @@ def train(
     ctx.logger.info("Starting Ultralytics training: model=%s, data=%s", model, train_args["data"])
     try:
         trainer_model = YOLO(model)
-        trainer_model.train(**train_args)
-        results_dir = trainer_model.trainer.save_dir
+        # Ultralytics resolves an explicit path: . against the working directory.
+        dataset_dir = _portable_dataset_dir(train_args["data"])
+        original_dir = Path.cwd()
+        if dataset_dir is not None:
+            os.chdir(dataset_dir)
+        try:
+            trainer_model.train(**train_args)
+            results_dir = Path(trainer_model.trainer.save_dir).resolve()
+        finally:
+            if dataset_dir is not None:
+                os.chdir(original_dir)
     except Exception as error:  # Ultralytics raises a wide variety of exceptions.
         raise BlockError(f"Ultralytics training failed: {error}") from error
 
     ctx.logger.info("Training finished; results: %s", results_dir)
     dataset.metadata["training_results"] = str(results_dir)
     return dataset
+
+
+def _portable_dataset_dir(value: str | list[str]) -> Path | None:
+    if not isinstance(value, str):
+        return None
+    path = Path(value)
+    if path.suffix not in {".yaml", ".yml"} or not path.is_file():
+        return None
+    config = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if (
+        isinstance(config, dict)
+        and config.get("path") == "."
+        and config.get("train") == "train.txt"
+    ):
+        return path.resolve().parent
+    return None
 
 
 def _local_path_or_backend_name(value, directory):

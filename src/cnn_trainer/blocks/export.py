@@ -29,7 +29,6 @@ def export_yolo(
     mode: str = "copy",
     overwrite: bool = False,
     clamp: bool = False,
-    absolute_path: bool = False,
 ) -> Dataset:
     destination = ctx.resolve(path) if path else ctx.workdir / "dataset"
     if destination is None:
@@ -42,7 +41,6 @@ def export_yolo(
         mode=mode,
         overwrite=overwrite,
         clamp=clamp,
-        absolute_path=absolute_path,
     )
     counts = Counter(record.split or default_split for record in dataset.images)
     ctx.logger.info(
@@ -64,13 +62,10 @@ def write_yolo_dataset(
     mode: str = "copy",
     overwrite: bool = False,
     clamp: bool = False,
-    absolute_path: bool = False,
 ) -> Path:
     """Write *dataset* under *destination* and return the ``data.yaml`` path.
 
-    By default ``data.yaml`` omits ``path`` so Ultralytics uses the YAML file's
-    parent directory. This keeps exported datasets and batch ZIPs portable.
-    Set ``absolute_path=True`` to pin the dataset root instead.
+    Split image lists use paths relative to their own directory.
     """
     if default_split not in KNOWN_SPLITS:
         raise BlockError(
@@ -83,7 +78,7 @@ def write_yolo_dataset(
 
     entries: list[tuple[ImageRecord, str, Path]] = []
     seen: dict[tuple[str, str], Path] = {}
-    counts: Counter[str] = Counter()
+    image_lists: dict[str, list[str]] = {split: [] for split in KNOWN_SPLITS}
 
     for record in dataset.images:
         if any(annotation.polygon is not None for annotation in record.annotations):
@@ -108,7 +103,6 @@ def write_yolo_dataset(
             )
         seen[key] = record.path
         entries.append((record, split, relative))
-        counts[split] += 1
 
     if len(set(dataset.classes)) != len(dataset.classes):
         raise BlockError("Class names must be unique before YOLO export")
@@ -118,6 +112,7 @@ def write_yolo_dataset(
         image_destination = destination / "images" / split / relative
         label_destination = destination / "labels" / split / relative.with_suffix(".txt")
         _place_file(record.path, image_destination, mode)
+        image_lists[split].append(f"./{image_destination.relative_to(destination).as_posix()}")
         lines = _label_lines(record, dataset, clamp=clamp)
         label_destination.parent.mkdir(parents=True, exist_ok=True)
         label_destination.write_text(
@@ -125,15 +120,15 @@ def write_yolo_dataset(
             encoding="utf-8",
         )
 
-    data: dict = {
-        "nc": len(dataset.classes),
+    data = {
         "names": {index: name for index, name in enumerate(dataset.classes)},
+        "path": ".",
     }
-    if absolute_path:
-        data = {"path": str(destination), **data}
-    for name in KNOWN_SPLITS:
-        if counts.get(name):
-            data[name] = f"images/{name}"
+    for split, images in image_lists.items():
+        if images:
+            filename = f"{split}.txt"
+            (destination / filename).write_text("\n".join(images) + "\n", encoding="utf-8")
+            data[split] = filename
 
     data_path = destination / "data.yaml"
     data_path.write_text(

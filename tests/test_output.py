@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from zipfile import ZipFile
+
 import pytest
+import yaml
 
 from cnn_trainer.blocks.output import make_batches, write_image_list
 from cnn_trainer.blocks.split import split
@@ -66,6 +69,17 @@ def test_make_batches_and_zip(coco_root, ctx):
     assert (destination / "batch_001.zip").is_file()
     assert (destination / "batch_002.zip").is_file()
     assert len(list((destination / "batch_001" / "images").rglob("*.png"))) == 2
+
+    with ZipFile(destination / "batch_001.zip") as archive:
+        assert yaml.safe_load(archive.read("data.yaml")) == {
+            "names": {0: "cat", 1: "dog"},
+            "path": ".",
+            "train": "train.txt",
+        }
+        entries = archive.read("train.txt").decode().splitlines()
+        assert len(entries) == 2
+        assert all(entry.startswith("./images/train/") for entry in entries)
+        assert all(entry[2:] in archive.namelist() for entry in entries)
 
 
 def test_make_batches_filters_split(coco_root, ctx):

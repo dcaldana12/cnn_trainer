@@ -92,7 +92,8 @@ def test_pipeline_end_to_end(coco_root, tmp_path):
     assert data_path.is_file()
     data = yaml.safe_load(data_path.read_text(encoding="utf-8"))
     assert data["names"] == {0: "cat"}
-    assert data["nc"] == 1
+    assert data["path"] == "."
+    assert data["train"] == "train.txt"
 
 
 def test_pipeline_dry_run_does_not_create_workdir(coco_root, tmp_path):
