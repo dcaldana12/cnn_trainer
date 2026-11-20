@@ -15,6 +15,8 @@ exporting a dataset.
 | `stats`, `validate`, `audit_dataset` | Summarize dataset contents, check annotations, and assess quality. |
 | `find_redundant_images`, `remove_flagged_images` | Find near-duplicates and blank images and remove selected candidates. |
 | `create_missing_labels`, `remap_classes`, `remove_class` | Create empty labels, remap classes, or remove annotations by class. |
+| `merge_datasets` | Combine same-format datasets and remap labels into a shared class list. |
+| `segmentation_to_boxes` | Convert YOLO polygons to axis-aligned detection boxes. |
 | `grayscale` | Convert images to grayscale stored in three RGB channels. |
 | `split`, `visual_split` | Assign train, validation, and test splits. `visual_split` balances visual clusters and keeps capture groups together. |
 | `export_yolo`, `write_image_list`, `make_batches` | Export YOLO datasets, image lists, or batches with optional ZIP archives. |

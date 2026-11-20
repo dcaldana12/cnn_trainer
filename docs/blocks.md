@@ -30,6 +30,8 @@ before execution.
 | `remove_class` | `remove_label` | Remove annotations of selected classes |
 | `find_redundant_images` | `find_duplicates`, `find_uninformative` | Flag duplicates and blank images |
 | `remove_flagged_images` | `remove_redundant`, `drop_candidates`, `remove_images` | Drop flagged images |
+| `merge_datasets` | | Combine same-format datasets and remap labels |
+| `segmentation_to_boxes` | | Convert YOLO polygons to axis-aligned boxes |
 | `grayscale` | | Convert images to three-channel grayscale |
 | `split` | | Assign train/val/test |
 | `export_yolo` | | Write a YOLO/Ultralytics dataset |
@@ -228,6 +230,58 @@ classify most of a dataset as duplicates. Start with `dry_run: true`, inspect
 `candidates.txt` holds one relative path per line. After reviewing it, pass the
 edited list back with `paths:` to remove exactly those images without rerunning
 the detector.
+
+## `merge_datasets`
+
+Merge the pipeline source with one or more additional datasets. All inputs use
+the pipeline source format (`yolo`, `coco`, or `cvat_xml`). List roots relative
+to the pipeline YAML, or use mappings with `root` and source options such as
+`images`, `annotations`, or `class_names`.
+
+```yaml
+source:
+  format: yolo
+  root: datasets/first
+
+pipeline:
+  - block: merge_datasets
+    paths:
+      - datasets/second
+      - root: datasets/third
+        data_yaml: custom-data.yaml
+  - block: validate
+  - block: export_yolo
+    path: build/merged-yolo
+```
+
+Class names are matched exactly. Classes that appear in more input datasets
+come first, with ties following the order in which the names first appear.
+Each source's annotation IDs are remapped to the new class list. For YOLO
+inputs, provide class names via the dataset YAML or `class_names` so the merge
+can match the intended classes.
+
+Put this block before assessment or splitting. Existing split assignments are
+preserved. Output paths use a per-source prefix so identical filenames from
+different datasets can coexist. The block merges records in memory, and
+`export_yolo` writes the combined images and remapped label files.
+
+## `segmentation_to_boxes`
+
+Convert YOLO polygon rows (`class x1 y1 x2 y2 x3 y3 ...`) to tight
+axis-aligned bounding boxes. Existing YOLO detection rows and class IDs are
+preserved, including when both row types appear in the same label file. The
+block takes no parameters.
+
+```yaml
+pipeline:
+  - block: segmentation_to_boxes
+  - block: validate
+  - block: export_yolo
+    path: build/detection
+```
+
+The export writes five-column YOLO detection labels to the destination.
+The original label files remain in the source dataset.
 
 ## `grayscale`
 

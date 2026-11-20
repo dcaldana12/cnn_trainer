@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Any
 
@@ -37,7 +38,7 @@ def load(source: dict, root: Path, class_names: list[str] | None) -> Dataset:
 
     infer_splits = bool(source.get("infer_splits", True))
     records: list[ImageRecord] = []
-    raw_annotations: dict[int, list[tuple[int, float, float, float, float]]] = {}
+    raw_annotations: dict[int, list[tuple[int, tuple[float, ...]]]] = {}
     parse_errors: list[str] = []
     max_class_id = -1
 
@@ -53,7 +54,7 @@ def load(source: dict, root: Path, class_names: list[str] | None) -> Dataset:
             if first in KNOWN_SPLITS:
                 split = first
 
-        annotations: list[tuple[int, float, float, float, float]] = []
+        annotations: list[tuple[int, tuple[float, ...]]] = []
         if has_label:
             for line_number, line in enumerate(
                 label_path.read_text(encoding="utf-8", errors="replace").splitlines(),
@@ -63,17 +64,16 @@ def load(source: dict, root: Path, class_names: list[str] | None) -> Dataset:
                 if not stripped:
                     continue
                 parts = stripped.split()
-                if len(parts) != 5:
+                if len(parts) != 5 and (len(parts) < 7 or len(parts) % 2 == 0):
                     parse_errors.append(
                         f"{relative_path.with_suffix('.txt')}, line {line_number}: "
-                        f"expected 5 values, found {len(parts)}"
+                        "expected 5 values for a box or at least 3 polygon points, "
+                        f"found {len(parts)}"
                     )
                     continue
                 try:
                     class_id = int(parts[0])
-                    x_center, y_center, box_width, box_height = (
-                        float(value) for value in parts[1:]
-                    )
+                    coordinates = tuple(float(value) for value in parts[1:])
                 except ValueError:
                     parse_errors.append(
                         f"{relative_path.with_suffix('.txt')}, line {line_number}: "
@@ -86,8 +86,14 @@ def load(source: dict, root: Path, class_names: list[str] | None) -> Dataset:
                         f"negative class id {class_id}"
                     )
                     continue
+                if len(coordinates) > 4 and not all(math.isfinite(value) for value in coordinates):
+                    parse_errors.append(
+                        f"{relative_path.with_suffix('.txt')}, line {line_number}: "
+                        "polygon contains NaN or infinity"
+                    )
+                    continue
                 max_class_id = max(max_class_id, class_id)
-                annotations.append((class_id, x_center, y_center, box_width, box_height))
+                annotations.append((class_id, coordinates))
 
         raw_annotations[index] = annotations
         records.append(
@@ -115,13 +121,32 @@ def load(source: dict, root: Path, class_names: list[str] | None) -> Dataset:
         )
 
     for index, record in enumerate(records):
-        for class_id, x_center, y_center, box_width, box_height in raw_annotations[index]:
+        for class_id, coordinates in raw_annotations[index]:
             if class_id >= len(class_names):
                 parse_errors.append(
                     f"{record.relative_path.with_suffix('.txt')}: class id {class_id} "
                     f"is outside the defined class list"
                 )
                 continue
+            if len(coordinates) > 4:
+                polygon = tuple(
+                    (x * record.width, y * record.height)
+                    for x, y in zip(coordinates[::2], coordinates[1::2], strict=True)
+                )
+                x_values, y_values = zip(*polygon, strict=True)
+                record.annotations.append(
+                    Annotation(
+                        class_id,
+                        min(x_values),
+                        min(y_values),
+                        max(x_values),
+                        max(y_values),
+                        polygon=polygon,
+                    )
+                )
+                continue
+
+            x_center, y_center, box_width, box_height = coordinates
             record.annotations.append(
                 Annotation(
                     class_id=class_id,

@@ -211,3 +211,28 @@ def test_train_cfg_preserves_backend_settings_and_allows_explicit_overrides(
     train(dataset, ctx, epochs=2, extra={"cfg": str(cfg_path), "epochs": 6, "model": "other.pt"})
     assert captured["model"] == "other.pt"
     assert captured["kwargs"]["epochs"] == 2
+
+
+def test_convert_mixed_yolo_labels_to_boxes(yolo_root, ctx):
+    from cnn_trainer.blocks.segmentation import segmentation_to_boxes
+
+    label = yolo_root / "labels/val/b.txt"
+    mixed = "1 0.5 0.5 0.4 0.2\n0 0.2 0.3 0.7 0.4 0.4 0.8\n"
+    label.write_text(mixed)
+    dataset = load_dataset({"format": "yolo", "root": str(yolo_root)}, ctx.config_dir)
+    image = next(record for record in dataset.images if record.relative_path.name == "b.png")
+    box, polygon = image.annotations
+    assert box.polygon is None
+    assert polygon.polygon == ((40, 30), (140, 40), (80, 80))
+    with pytest.raises(BlockError, match="segmentation_to_boxes"):
+        export_yolo(dataset, ctx, path="detection")
+
+    segmentation_to_boxes(dataset, ctx)
+    export_yolo(dataset, ctx, path="detection")
+
+    exported = ctx.config_dir / "detection/labels/val/b.txt"
+    assert exported.read_text().splitlines() == [
+        "1 0.500000 0.500000 0.400000 0.200000",
+        "0 0.450000 0.550000 0.500000 0.500000",
+    ]
+    assert label.read_text() == mixed

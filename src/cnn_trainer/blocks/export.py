@@ -80,13 +80,16 @@ def write_yolo_dataset(
         raise BlockError("mode must be one of: copy, symlink, hardlink")
 
     destination = destination.resolve()
-    _prepare_destination(destination, overwrite=overwrite)
 
     entries: list[tuple[ImageRecord, str, Path]] = []
     seen: dict[tuple[str, str], Path] = {}
     counts: Counter[str] = Counter()
 
     for record in dataset.images:
+        if any(annotation.polygon is not None for annotation in record.annotations):
+            raise BlockError(
+                f"{record.relative_path}: run segmentation_to_boxes before YOLO detection export"
+            )
         split = record.split or default_split
         if split not in KNOWN_SPLITS:
             raise BlockError(
@@ -110,6 +113,7 @@ def write_yolo_dataset(
     if len(set(dataset.classes)) != len(dataset.classes):
         raise BlockError("Class names must be unique before YOLO export")
 
+    _prepare_destination(destination, overwrite=overwrite)
     for record, split, relative in entries:
         image_destination = destination / "images" / split / relative
         label_destination = destination / "labels" / split / relative.with_suffix(".txt")

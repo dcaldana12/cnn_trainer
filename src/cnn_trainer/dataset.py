@@ -14,13 +14,14 @@ _KNOWN_SPLIT_SET = frozenset(KNOWN_SPLITS)
 
 @dataclass
 class Annotation:
-    """A single detection box in absolute pixel coordinates."""
+    """An object with pixel bounds and optional polygon vertices."""
 
     class_id: int
     x1: float
     y1: float
     x2: float
     y2: float
+    polygon: tuple[tuple[float, float], ...] | None = None
 
     def to_yolo(self, width: int, height: int) -> tuple[float, float, float, float]:
         """Convert to normalized ``(x_center, y_center, width, height)``."""
