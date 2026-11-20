@@ -23,6 +23,16 @@ class Annotation:
     y2: float
     polygon: tuple[tuple[float, float], ...] | None = None
 
+    def extends_outside(self, width: int, height: int) -> bool:
+        # YOLO center and size are rounded separately, making edge errors possible.
+        tolerance = 1e-6 * max(width, height, 1)
+        return (
+            self.x1 < -tolerance
+            or self.y1 < -tolerance
+            or self.x2 > width + tolerance
+            or self.y2 > height + tolerance
+        )
+
     def to_yolo(self, width: int, height: int) -> tuple[float, float, float, float]:
         """Convert to normalized ``(x_center, y_center, width, height)``."""
         return (

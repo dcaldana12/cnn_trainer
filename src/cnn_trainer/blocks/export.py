@@ -162,27 +162,18 @@ def _label_lines(record: ImageRecord, dataset: Dataset, *, clamp: bool) -> list[
         if not all(math.isfinite(value) for value in (x1, y1, x2, y2)):
             raise BlockError(f"{prefix}: box contains NaN or infinity")
 
-        if clamp:
-            x1 = min(max(x1, 0.0), record.width)
-            y1 = min(max(y1, 0.0), record.height)
-            x2 = min(max(x2, 0.0), record.width)
-            y2 = min(max(y2, 0.0), record.height)
-
         if x1 >= x2 or y1 >= y2:
             raise BlockError(f"{prefix}: box has zero or negative width/height")
+        if not clamp and annotation.extends_outside(record.width, record.height):
+            raise BlockError(f"{prefix}: box extends outside the image; set clamp: true to clip it")
 
-        if not clamp:
-            tolerance = 1e-6
-            if (
-                x1 < -tolerance
-                or y1 < -tolerance
-                or x2 > record.width + tolerance
-                or y2 > record.height + tolerance
-            ):
-                raise BlockError(
-                    f"{prefix}: box extends outside the image; "
-                    "run the validate block or set clamp: true"
-                )
+        # Snap rounding-level overshoot to the image edge in both modes.
+        x1 = min(max(x1, 0.0), record.width)
+        y1 = min(max(y1, 0.0), record.height)
+        x2 = min(max(x2, 0.0), record.width)
+        y2 = min(max(y2, 0.0), record.height)
+        if x1 >= x2 or y1 >= y2:
+            raise BlockError(f"{prefix}: box has zero or negative width/height after clipping")
 
         x_center = (x1 + x2) / 2.0 / record.width
         y_center = (y1 + y2) / 2.0 / record.height

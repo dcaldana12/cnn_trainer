@@ -66,7 +66,6 @@ def validate(
         if record.width <= 0 or record.height <= 0:
             errors.append(f"{relative}: invalid image size {record.width}x{record.height}")
 
-        tolerance = 1e-6 * max(record.width, record.height, 1)
         for index, annotation in enumerate(record.annotations, start=1):
             total_annotations += 1
             prefix = f"{relative}, annotation {index}"
@@ -86,17 +85,15 @@ def validate(
                 errors.append(f"{prefix}: box has zero or negative width/height")
                 continue
 
-            if check_bounds and record.width > 0 and record.height > 0:
-                if (
-                    annotation.x1 < -tolerance
-                    or annotation.y1 < -tolerance
-                    or annotation.x2 > record.width + tolerance
-                    or annotation.y2 > record.height + tolerance
-                ):
-                    errors.append(
-                        f"{prefix}: box extends outside image bounds "
-                        f"({record.width}x{record.height})"
-                    )
+            if (
+                check_bounds
+                and record.width > 0
+                and record.height > 0
+                and annotation.extends_outside(record.width, record.height)
+            ):
+                errors.append(
+                    f"{prefix}: box extends outside image bounds ({record.width}x{record.height})"
+                )
 
         if len(errors) == error_count:
             valid_images += 1

@@ -236,3 +236,22 @@ def test_convert_mixed_yolo_labels_to_boxes(yolo_root, ctx):
         "0 0.450000 0.550000 0.500000 0.500000",
     ]
     assert label.read_text() == mixed
+
+
+def test_batch_accepts_rounded_yolo_boxes_at_image_edges(yolo_root, ctx):
+    from cnn_trainer.blocks.output import make_batches
+    from cnn_trainer.blocks.validate import validate
+
+    label = yolo_root / "labels/train/a.txt"
+    label.write_text("0 0.499583 0.498221 0.999167 0.996441\n")
+    dataset = load_dataset({"format": "yolo", "root": str(yolo_root)}, ctx.config_dir)
+
+    validate(dataset, ctx, require_labels=False)
+    make_batches(dataset, ctx, split="train", path="batches", zip_archives=False)
+
+    output = ctx.config_dir / "batches/batch_001/labels/train/a.txt"
+    _, x_center, y_center, width, height = map(float, output.read_text().split())
+    assert x_center - width / 2 >= -1e-6
+    assert y_center - height / 2 >= -1e-6
+    assert x_center + width / 2 == pytest.approx(0.9991665, abs=1e-6)
+    assert y_center + height / 2 == pytest.approx(0.9964415, abs=1e-6)
