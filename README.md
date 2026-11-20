@@ -7,10 +7,20 @@
 YAML-driven pipelines for object-detection datasets and YOLO training.
 
 Load a CVAT XML export, a COCO JSON file, or an existing YOLO directory, then
-compose the steps you need as blocks: validation, quality audits, duplicate
-removal, label remapping, splits, YOLO export, batch archives, and optionally
-Ultralytics training. A pipeline does **not** have to end in training; it can stop
-after cleaning labels or exporting a new dataset.
+combine the blocks you need. A pipeline can stop after assessing, cleaning, or
+exporting a dataset.
+
+| Blocks | Purpose |
+| --- | --- |
+| `stats`, `validate`, `audit_dataset` | Summarize dataset contents, check annotations, and assess quality. |
+| `find_redundant_images`, `remove_flagged_images` | Find near-duplicates and blank images and remove selected candidates. |
+| `create_missing_labels`, `remap_classes`, `remove_class` | Create empty labels, remap classes, or remove annotations by class. |
+| `grayscale` | Convert images to grayscale stored in three RGB channels. |
+| `split`, `visual_split` | Assign train, validation, and test splits. `visual_split` balances visual clusters and keeps capture groups together. |
+| `export_yolo`, `write_image_list`, `make_batches` | Export YOLO datasets, image lists, or batches with optional ZIP archives. |
+| `train` | Train a detector with Ultralytics YOLO. |
+
+See the [block reference](docs/blocks.md) for parameters and aliases.
 
 ## Features
 

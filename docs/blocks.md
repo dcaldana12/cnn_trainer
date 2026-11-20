@@ -30,6 +30,7 @@ before execution.
 | `remove_class` | `remove_label` | Remove annotations of selected classes |
 | `find_redundant_images` | `find_duplicates`, `find_uninformative` | Flag duplicates and blank images |
 | `remove_flagged_images` | `remove_redundant`, `drop_candidates`, `remove_images` | Drop flagged images |
+| `grayscale` | | Convert images to three-channel grayscale |
 | `split` | | Assign train/val/test |
 | `export_yolo` | | Write a YOLO/Ultralytics dataset |
 | `write_image_list` | `write_path`, `write_train_txt` | Write an image path list |
@@ -227,6 +228,21 @@ classify most of a dataset as duplicates. Start with `dry_run: true`, inspect
 `candidates.txt` holds one relative path per line. After reviewing it, pass the
 edited list back with `paths:` to remove exactly those images without rerunning
 the detector.
+
+## `grayscale`
+
+Convert each image to grayscale and store the same intensity in all three RGB
+channels. The block needs Pillow (`uv sync --extra images`) and takes no
+parameters. It writes copies in a fresh `grayscale-*/` directory in the run's
+workdir. Existing image names, dimensions, annotations, and splits are
+preserved. The original files remain available at their source paths.
+
+Place the block before export or training so those steps use the converted images.
+
+```yaml
+- block: grayscale
+- block: export_yolo
+```
 
 ## `visual_split`
 
